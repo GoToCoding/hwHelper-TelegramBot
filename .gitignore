@@ -1,4 +1,6 @@
 .idea*
 *.pyc
+**/*.pyc
 __pycache__
 *token.py
+**/token.py
