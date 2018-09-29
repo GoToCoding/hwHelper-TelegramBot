@@ -1,10 +1,11 @@
 import telebot
+import token
 from telebot import types
 from actions import download_pdf
 from classes.user import User
 
 
-TOKEN = '651457991:AAHXz_0AeCAcax2A6LbxRChFXHtE4sDLRAk'
+TOKEN = token.TOKEN
 bot = telebot.TeleBot(TOKEN)
 
 users = {}
