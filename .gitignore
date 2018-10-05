@@ -2,4 +2,4 @@
 *.pyc
 __pycache__
 files
-**/token.py
+**/bottoken.py
