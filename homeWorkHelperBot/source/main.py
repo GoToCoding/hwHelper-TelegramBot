@@ -1,11 +1,11 @@
 import os
+import pickle
 import shutil
 import zipfile
 
 import bottoken
 import telebot
 from telebot import types
-from actions import download_pdf
 from classes.user import User
 from classes.group import Group
 from classes import action
@@ -13,9 +13,33 @@ from classes import action
 
 bot = telebot.TeleBot(bottoken.TOKEN)
 
-# need to store it somewhere
+
 users = {}
 groups = []
+
+if os.path.isfile('users.pickle'):
+    with open('users.pickle', 'rb') as f:
+        users = pickle.load(f)
+
+if os.path.isfile('groups.pickle'):
+    with open('groups.pickle', 'rb') as f:
+        groups = pickle.load(f)
+
+
+def save_data():
+    with open('users.pickle', 'wb') as f:
+        pickle.dump(users, f)
+    with open('groups.pickle', 'wb') as f:
+        pickle.dump(groups, f)
+
+
+def save_data_decorator(function_to_decorate):
+    def wrapper(*args, **kwargs):
+        save_data()
+        function_to_decorate(*args, **kwargs)
+        save_data()
+    return wrapper
+
 
 markup_menu = types.InlineKeyboardMarkup()
 markup_menu.row_width = 2
@@ -28,17 +52,16 @@ back_to_menu.add(types.InlineKeyboardButton("Return to menu", callback_data=acti
 
 
 @bot.message_handler(commands=['start'])
+@save_data_decorator
 def action_start(message):
-    bot.reply_to(message, 'Hello!')
     uid = message.from_user.id
-    name = message.from_user.username
-    user = User(name, uid)
-    user.groups = []
+    user = User(message.from_user.username, uid)
     users[uid] = user
+    bot.reply_to(message, 'Hello!')
     users[uid].last_markup = bot.send_message(message.chat.id, "select an action", reply_markup=markup_menu)
 
 
-# bad_func
+# useless function, need only for debug
 @bot.message_handler(commands=['get_files'])
 def action_get(message):
     uid = message.from_user.id
@@ -48,6 +71,7 @@ def action_get(message):
 
 
 @bot.message_handler(content_types=['document'])
+@save_data_decorator
 def get_document(message):
     print(message.document.file_id)
     print(message.from_user.username)
@@ -65,6 +89,7 @@ def get_document(message):
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.return_to_menu, call.data))
+@save_data_decorator
 def show_menu(call):
     uid = call.from_user.id
     bot.edit_message_reply_markup(chat_id=call.message.chat.id,
@@ -73,6 +98,7 @@ def show_menu(call):
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.create_a_group, call.data))
+@save_data_decorator
 def show_create_a_group_name(call):
     uid = call.from_user.id
     bot.send_message(chat_id=call.message.chat.id, text='Create and enter group name')
@@ -80,6 +106,7 @@ def show_create_a_group_name(call):
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.send_file, call.data))
+@save_data_decorator
 def show_groups_to_send(call):
     print(call.from_user.username, call.message.text, call.data)
 
@@ -91,10 +118,13 @@ def show_groups_to_send(call):
         markup.add(types.InlineKeyboardButton('You are not a member of any groups, return to menu',
                                               callback_data=action.return_to_menu))
     else:
-        markup.row_width = len(users[uid].groups)
+        markup.row_width = len(users[uid].groups) + 1
         for group in users[uid].groups:
             group_name = groups[group].name
             markup.add(types.InlineKeyboardButton(group_name, callback_data=action.send_to_group + groups[group].name))
+
+        markup.add(types.InlineKeyboardButton('You are not a member of any groups, return to menu',
+                                              callback_data=action.return_to_menu))
 
     bot.edit_message_reply_markup(chat_id=call.message.chat.id,
                                   message_id=users[uid].last_markup.message_id,
@@ -102,6 +132,7 @@ def show_groups_to_send(call):
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.send_to_group, call.data))
+@save_data_decorator
 def parse_group_id_to_send(call):
     print(call.from_user)
 
@@ -120,6 +151,7 @@ def parse_group_id_to_send(call):
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.get_files, call.data))
+@save_data_decorator
 def show_groups_to_get_files(call):
     print(call.from_user.username, call.message.text, call.data)
 
@@ -142,6 +174,7 @@ def show_groups_to_get_files(call):
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.download_files_from_group, call.data))
+@save_data_decorator
 def send_zip_file_with_files(call):
     creator_uid = call.from_user.id
     user = users[creator_uid]
@@ -150,33 +183,34 @@ def send_zip_file_with_files(call):
         if group.name == group_name:
             user.selected_group = group.id
 
-    if not os.path.exists('tmp'):
-        os.makedirs('tmp')
+    if not os.path.exists('files'):
+        os.makedirs('files')
 
-    print('created tmp')
+    print('created dir files')
 
     for uid, file_id in groups[user.selected_group].files.items():
         file_info = bot.get_file(file_id)
         downloaded_file = bot.download_file(file_info.file_path)
-        full_file_name = os.path.join('tmp', users[uid].username + '_' + file_info.file_path.replace('/', '_'))
+        full_file_name = os.path.join('files', users[uid].username + '_' + file_info.file_path.replace('/', '_'))
         with open(full_file_name, 'wb') as new_file:
             new_file.write(downloaded_file)
 
     zip_filename = group_name + '.zip'
-    zf = zipfile.ZipFile(zip_filename, 'w')
-    for dirname, subdirs, files in os.walk('tmp'):
-        zf.write(dirname)
-        for filename in files:
-            zf.write(os.path.join(dirname, filename))
-    zf.close()
+    with zipfile.ZipFile(zip_filename, 'w') as zf:
+        for dirname, subdirs, files in os.walk('files'):
+            zf.write(dirname)
+            for filename in files:
+                zf.write(os.path.join(dirname, filename))
     bot.send_document(call.message.chat.id, open(zip_filename, 'rb'))
-    print('start deleting tmp')
+
+    print('start deleting dir files')
     os.remove(zip_filename)
-    shutil.rmtree('tmp', ignore_errors=True)
-    print('deleted tmp')
+    shutil.rmtree('files', ignore_errors=True)
+    print('deleted dir files')
 
 
 @bot.message_handler(func=lambda m: True)
+@save_data_decorator
 def text_messages(message):
     uid = message.from_user.id
     print(users[uid].username, users[uid].status)
@@ -185,7 +219,9 @@ def text_messages(message):
         users[uid].status = 'entering_participants_nicknames'
         bot.send_message(chat_id=message.chat.id, text='group ' + message.text + ' has been created. Now send send '
                                                                                  'user nicknames separated by a space')
+        save_data()
     elif users[uid].status == 'entering_participants_nicknames':
+        save_data()
         nicknames = message.text.split()
         group_id = users[uid].created_groups[-1]
         for nick in nicknames:
