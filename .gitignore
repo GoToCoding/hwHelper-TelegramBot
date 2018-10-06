@@ -3,5 +3,4 @@
 __pycache__
 files
 **/bottoken.py
-**/groups.pickle
-**/users.pickle
+**/*.pickle
