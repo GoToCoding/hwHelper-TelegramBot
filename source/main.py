@@ -50,14 +50,22 @@ def save_data_decorator(function_to_decorate):
     return wrapper
 
 
-markup_menu = types.InlineKeyboardMarkup()
-markup_menu.row_width = 2
-markup_menu.add(types.InlineKeyboardButton("Send file", callback_data=action.send_file),
-                types.InlineKeyboardButton("Create a group", callback_data=action.create_a_group),
-                types.InlineKeyboardButton("Get files", callback_data=action.get_files))
-
 back_to_menu = types.InlineKeyboardMarkup()
 back_to_menu.add(types.InlineKeyboardButton("Return to menu", callback_data=action.return_to_menu))
+
+
+def generate_menu_markup(user: User):
+    markup = types.InlineKeyboardMarkup()
+    markup.row_width = len(user.groups) + len(user.created_groups) + 2
+    markup.add(types.InlineKeyboardButton("Join to new group", callback_data=action.join_group),
+               types.InlineKeyboardButton("Create a group", callback_data=action.create_a_group))
+    for group_id in user.groups:
+        g = groups[group_id]
+        markup.add(types.InlineKeyboardButton('send to ' + g.name, callback_data=action.send_to_group + str(g.id)))
+    for group_id in user.created_groups:
+        g = groups[group_id]
+        markup.add(types.InlineKeyboardButton('get files from ' + g.name, callback_data=action.download_files_from_group + str(g.id)))
+    return markup
 
 
 @bot.message_handler(commands=['start', 'menu'])
@@ -67,16 +75,7 @@ def action_start(message):
     if uid not in users:  # if it's new user, create User()
         users[uid] = User(message.from_user.username, uid)
         bot.reply_to(message, 'Hello!')
-    users[uid].last_markup = bot.send_message(message.chat.id, "select an action", reply_markup=markup_menu)
-
-
-# useless function, need only for debug
-@bot.message_handler(commands=['get_files'])
-def action_get(message):
-    uid = message.from_user.id
-    for group in users[uid].created_groups:
-        for uid, file_id in groups[group].files.items():
-            bot.send_document(message.chat.id, str(file_id))
+    users[uid].last_markup = bot.send_message(message.chat.id, "select an action", reply_markup=generate_menu_markup(users[uid]))
 
 
 @bot.message_handler(content_types=['document'])
@@ -103,15 +102,15 @@ def show_menu(call):
     uid = call.from_user.id
     bot.edit_message_reply_markup(chat_id=call.message.chat.id,
                                   message_id=users[uid].last_markup.message_id,
-                                  reply_markup=markup_menu)
+                                  reply_markup=generate_menu_markup(uid))
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.create_a_group, call.data))
 @save_data_decorator
 def show_create_a_group_name(call):
     uid = call.from_user.id
-    bot.send_message(chat_id=call.message.chat.id, text='Create and enter group name')
     users[uid].status = 'creating_group_name'
+    bot.send_message(chat_id=call.message.chat.id, text='Create and enter group name')
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.send_file, call.data))
@@ -147,14 +146,9 @@ def parse_group_id_to_send(call):
 
     uid = call.from_user.id
     user = users[uid]
-    group_name = call.data[len(action.send_to_group):]
-    for group in groups:
-        if group.name == group_name:
-            user.selected_group = group.id
-    print(group_name, users[uid].selected_group)
-
+    user.selected_group = int(call.data[len(action.send_to_group):])
     bot.edit_message_reply_markup(chat_id=call.message.chat.id,
-                                  message_id=users[uid].last_markup.message_id,
+                                  message_id=user.last_markup.message_id,
                                   reply_markup=types.InlineKeyboardMarkup())
     bot.send_message(chat_id=call.message.chat.id, text='Now send your file, please')
 
@@ -185,15 +179,21 @@ def show_groups_to_get_files(call):
                                   reply_markup=markup)
 
 
+@bot.callback_query_handler(func=lambda call: action.check(action.join_group, call.data))
+@save_data_decorator
+def join_group_via_invite_key(call):
+    uid = call.from_user.id
+    users[uid].status = 'entering_invite_key'
+    bot.send_message(uid, 'Enter invite key')
+
+
 @bot.callback_query_handler(func=lambda call: action.check(action.download_files_from_group, call.data))
 @save_data_decorator
 def send_zip_file_with_files(call):
     creator_uid = call.from_user.id
     user = users[creator_uid]
-    group_name = call.data[len(action.download_files_from_group):]
-    for group in groups:
-        if group.name == group_name:
-            user.selected_group = group.id
+    user.selected_group = int(call.data[len(action.download_files_from_group):])
+    group_name = groups[user.selected_group].name
 
     tmpdir = 'files' + str(uuid.uuid4())
     if not os.path.exists(tmpdir):
@@ -220,8 +220,8 @@ def send_zip_file_with_files(call):
     os.remove(zip_filename)
     shutil.rmtree(tmpdir, ignore_errors=True)
     print('deleted dir', tmpdir)
-    users[creator_uid].last_markup = bot.send_message(call.message.chat.id, "select an action", reply_markup=markup_menu)
-
+    users[creator_uid].last_markup = bot.send_message(call.chat.id, "select an action",
+                                                      reply_markup=generate_menu_markup(users[creator_uid]))
 
 
 @bot.message_handler(func=lambda m: True)
@@ -230,28 +230,27 @@ def text_messages(message):
     uid = message.from_user.id
     print(users[uid].username, users[uid].status)
     if users[uid].status == 'creating_group_name':
-        create_group(uid, message.text)
-        users[uid].status = 'entering_participants_nicknames'
-        bot.send_message(chat_id=message.chat.id, text='group ' + message.text + ' has been created. Now send send '
-                                                                                 'user nicknames separated by a space')
-    elif users[uid].status == 'entering_participants_nicknames':
-        nicknames = message.text.split()
-        group_id = users[uid].created_groups[-1]
-        for nick in nicknames:
-            if nick[0] == '@':
-                user_nick = nick[1:]
-                for user_id, user in users.items():
-                    if user.username.lower() == user_nick.lower():
-                        user.groups.append(group_id)
-        users[uid].status = ""
-        bot.send_message(chat_id=message.chat.id, text='group ' + message.text + 'Ok, got it!')
-        users[uid].last_markup = bot.send_message(message.chat.id, "select an action", reply_markup=markup_menu)
+        group_id = create_group(uid, message.text)
+        users[uid].status = ''
+        users[uid].created_groups.append(group_id)
+        bot.send_message(chat_id=message.chat.id, text='group ' + message.text + ' has been created. Group invite key '
+                                                                                 ':\n' + groups[group_id].invite_key)
+        users[uid].last_markup = bot.send_message(message.chat.id, "select an action",
+                                                  reply_markup=generate_menu_markup(users[uid]))
+
+    elif users[uid].status == 'entering_invite_key':
+        invite_key = message.text
+        for group in groups:
+            if group.invite_key == invite_key:
+                users[uid].groups.append(group.id)
+                bot.send_message(message.chat.id, 'You have been successfully added to the ' + group.name + ' group.')
 
 
 def create_group(uid, name):
     group_id = len(groups)
-    groups.append(Group(group_id, uid, name))
+    groups.append(Group(group_id, uid, name, str(uuid.uuid4())))
     users[uid].created_groups.append(group_id)
+    return group_id
 
 
 bot.polling()
