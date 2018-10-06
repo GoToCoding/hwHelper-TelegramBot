@@ -56,7 +56,7 @@ back_to_menu.add(types.InlineKeyboardButton("Return to menu", callback_data=acti
 
 def generate_menu_markup(user: User):
     markup = types.InlineKeyboardMarkup()
-    markup.row_width = len(user.groups) + len(user.created_groups) + 2
+    markup.row_width = len(user.groups) + len(user.created_groups) + 1
     markup.add(types.InlineKeyboardButton("Join to new group", callback_data=action.join_group),
                types.InlineKeyboardButton("Create a group", callback_data=action.create_a_group))
     for group_id in user.groups:
@@ -102,7 +102,7 @@ def show_menu(call):
     uid = call.from_user.id
     bot.edit_message_reply_markup(chat_id=call.message.chat.id,
                                   message_id=users[uid].last_markup.message_id,
-                                  reply_markup=generate_menu_markup(uid))
+                                  reply_markup=generate_menu_markup(users[uid]))
 
 
 @bot.callback_query_handler(func=lambda call: action.check(action.create_a_group, call.data))
@@ -220,7 +220,7 @@ def send_zip_file_with_files(call):
     os.remove(zip_filename)
     shutil.rmtree(tmpdir, ignore_errors=True)
     print('deleted dir', tmpdir)
-    users[creator_uid].last_markup = bot.send_message(call.chat.id, "select an action",
+    users[creator_uid].last_markup = bot.send_message(call.message.chat.id, "select an action",
                                                       reply_markup=generate_menu_markup(users[creator_uid]))
 
 
@@ -232,7 +232,6 @@ def text_messages(message):
     if users[uid].status == 'creating_group_name':
         group_id = create_group(uid, message.text)
         users[uid].status = ''
-        users[uid].created_groups.append(group_id)
         bot.send_message(chat_id=message.chat.id, text='group ' + message.text + ' has been created. Group invite key '
                                                                                  ':\n' + groups[group_id].invite_key)
         users[uid].last_markup = bot.send_message(message.chat.id, "select an action",
@@ -244,6 +243,8 @@ def text_messages(message):
             if group.invite_key == invite_key:
                 users[uid].groups.append(group.id)
                 bot.send_message(message.chat.id, 'You have been successfully added to the ' + group.name + ' group.')
+        users[uid].last_markup = bot.send_message(message.chat.id, "select an action",
+                                                  reply_markup=generate_menu_markup(users[uid]))
 
 
 def create_group(uid, name):
