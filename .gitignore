@@ -2,5 +2,5 @@
 *.pyc
 __pycache__
 files
-**/bottoken.py
+**/secret_settings.py
 **/*.pickle

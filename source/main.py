@@ -6,14 +6,14 @@ import uuid
 import zipfile
 from functools import wraps
 
-import bottoken
+import secret_settings
 import telebot
 from telebot import types
 from classes.user import User
 from classes.group import Group
 from classes import action
 
-bot = telebot.TeleBot(bottoken.TOKEN)
+bot = telebot.TeleBot(secret_settings.TOKEN)
 
 users = {}
 groups = []
@@ -81,7 +81,7 @@ def start_invite_key(text: str):
 
 
 def generate_invite_link(invite_key):
-    return 'https://t.me/hwhelperbot?start=' + invite_key
+    return 'https://t.me/' + secret_settings.LOGIN + '?start=' + invite_key
 
 
 @bot.message_handler(commands=['start'])
