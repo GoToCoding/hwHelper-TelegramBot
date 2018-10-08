@@ -68,13 +68,37 @@ def generate_menu_markup(user: User):
     return markup
 
 
-@bot.message_handler(commands=['start', 'menu'])
+def is_valid_uuid(uuid_to_test: str, version: int=4):
+    try:
+        uuid_obj = uuid.UUID(uuid_to_test, version=version)
+    except:
+        return False
+    return str(uuid_obj) == uuid_to_test
+
+
+def start_invite_key(text: str):
+    return len(text.split()) == 2 and is_valid_uuid(text.split()[1])
+
+
+def generate_invite_link(invite_key):
+    return 'https://t.me/hwhelperbot?start=' + invite_key
+
+
+@bot.message_handler(commands=['start'])
 @save_data_decorator
 def action_start(message):
     uid = message.from_user.id
+
     if uid not in users:  # if it's new user, create User()
         users[uid] = User(message.from_user.username, uid)
         bot.reply_to(message, 'Hello!')
+
+    if start_invite_key(message.text):
+        invite_key = message.text.split()[1]
+        for group in groups:
+            if group.invite_key == invite_key:
+                users[uid].groups.append(group.id)
+                bot.send_message(message.chat.id, 'You have been successfully added to the ' + group.name + ' group.')
     users[uid].last_markup = bot.send_message(message.chat.id, "select an action", reply_markup=generate_menu_markup(users[uid]))
 
 
@@ -232,12 +256,15 @@ def text_messages(message):
     if users[uid].status == 'creating_group_name':
         group_id = create_group(uid, message.text)
         users[uid].status = ''
-        bot.send_message(chat_id=message.chat.id, text='group ' + message.text + ' has been created. Group invite key '
-                                                                                 ':\n' + groups[group_id].invite_key)
+        bot.send_message(chat_id=message.chat.id, text='group ' + message.text + ' has been created. Group invite key:')
+        bot.send_message(chat_id=message.chat.id, text=groups[group_id].invite_key)
+        bot.send_message(chat_id=message.chat.id, text='Or you can just share group invite link:')
+        bot.send_message(chat_id=message.chat.id, text=generate_invite_link(groups[group_id].invite_key))
         users[uid].last_markup = bot.send_message(message.chat.id, "select an action",
                                                   reply_markup=generate_menu_markup(users[uid]))
 
     elif users[uid].status == 'entering_invite_key':
+        users[uid].status = ''
         invite_key = message.text
         for group in groups:
             if group.invite_key == invite_key:
