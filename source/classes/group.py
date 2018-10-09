@@ -1,6 +1,6 @@
 import uuid
 from data import groups
-from user import get_user
+from classes.user import get_user
 
 
 class Group:
