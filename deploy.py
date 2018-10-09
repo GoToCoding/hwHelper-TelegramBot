@@ -53,8 +53,6 @@ def deploy():
     ])
     subprocess.call(['ssh', '-t', 'root@{}'.format(server), ssh_command])
 
-    print('Success!')
-
 
 if __name__ == '__main__':
     deploy()
