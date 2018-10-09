@@ -49,7 +49,7 @@ def have_invite_key(text: str):
 
 
 def generate_invite_link(invite_key):
-    return 'https://t.me/' + secret_settings.LOGIN + '?start=' + invite_key
+    return 't.me/' + secret_settings.LOGIN + '?start=' + invite_key
 
 
 def update_user(message):
