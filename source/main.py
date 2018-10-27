@@ -5,13 +5,15 @@ import shutil
 import uuid
 import zipfile
 
-import secret_settings
 import telebot
 from telebot import types
-from classes.user import User, get_user, add_user
-from classes.group import Group, get_group, get_group_by_invite_key, create_group
+
+import secret_settings
 from classes import action
-from data import upload_data, save_data, save_data_decorator
+from classes.group import (Group, create_group, get_group,
+                           get_group_by_invite_key)
+from classes.user import User, add_user, get_user
+from data import save_data, save_data_decorator, upload_data
 
 bot = telebot.TeleBot(secret_settings.TOKEN)
 
