@@ -2,4 +2,5 @@
 *.pyc
 __pycache__
 files
-**/token.py
+**/secret_settings.py
+**/*.pickle
