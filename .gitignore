@@ -1,6 +1,7 @@
-.idea*
+.idea
+.vscode
 *.pyc
 __pycache__
-files
-**/secret_settings.py
-**/*.pickle
+secret_settings.py
+*.pickle
+deploy_settings.json
