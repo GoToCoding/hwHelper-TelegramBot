@@ -3,5 +3,5 @@
 *.pyc
 __pycache__
 secret_settings.py
-*.pickle
 deploy_settings.json
+*.sqlite3
